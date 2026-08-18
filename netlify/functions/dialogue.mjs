@@ -1,9 +1,16 @@
 /* Netlify Function — passage-bound answering over the reader's own copy.
    Netlify's AI Gateway injects ANTHROPIC_API_KEY and ANTHROPIC_BASE_URL.
+
+   The answer is streamed, so a long one cannot run into the thirty seconds of
+   silence after which Netlify's edge abandons the connection.
    Nothing is stored or logged. */
 
+import { json, ndjson, open, consume, gateway, message } from "./lib/stream.mjs";
+
 const MODEL = process.env.DIALOG_MODEL || "claude-sonnet-4-6";
-const FALLBACK = ["claude-sonnet-4-5", "claude-3-7-sonnet-latest"];
+/* Both fallbacks must be models the AI Gateway actually serves; asking it for
+   one it does not know is a 404 and burns a retry for nothing. */
+const FALLBACK = ["claude-sonnet-4-5", "claude-haiku-4-5"];
 
 const BASE = `You are a reading instrument for one short book: Eric Schwitzgebel, "AI and Consciousness: A Skeptical Overview" (Cambridge Elements in Philosophy and AI, 2026), an introductory treatment in eleven sections.
 
@@ -35,8 +42,7 @@ export default async (req) => {
   if (frage.length < 5) return json({ error: "Send a formulated question." }, 400);
   if (!passagen.length) return json({ error: "No passages supplied." }, 400);
 
-  const key = process.env.ANTHROPIC_API_KEY;
-  const base = (process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com").replace(/\/$/, "");
+  const { key, base } = gateway();
   if (!key) {
     return json({
       error: "No access to the Anthropic endpoint is configured. In Netlify, enable AI Gateway under " +
@@ -58,31 +64,46 @@ export default async (req) => {
   const payload = { model: MODEL, max_tokens: 1600, temperature: 0.2,
                     system: BASE + MODES[modus], messages };
 
-  let last = "";
-  for (const model of [MODEL, ...FALLBACK]) {
-    payload.model = model;
-    try {
-      const r = await fetch(`${base}/v1/messages`, {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
-        body: JSON.stringify(payload),
-      });
-      if (r.ok) {
-        const d = await r.json();
-        const antwort = (d.content || []).filter(c => c.type === "text").map(c => c.text).join("\n").trim();
-        return json({ antwort: antwort || "(empty answer)", modell: model, passagen: passagen.length });
+  return ndjson(async ({ send, signal, deadline }) => {
+    /* Settle on a model before writing anything downstream: a rejected one can
+       then still be swapped for the next without the reader seeing a false start. */
+    let res = null, used = "", last = "";
+    for (const model of [MODEL, ...FALLBACK]) {
+      try {
+        res = await open(base, key, { ...payload, model }, signal);
+        used = model;
+        break;
+      } catch (e) {
+        last = message(e);
+        if (e.status !== 404 && e.status !== 400) break;
       }
-      last = `${r.status} ${(await r.text()).slice(0, 300)}`;
-      if (r.status !== 404 && r.status !== 400) break;
-    } catch (e) { last = String(e && e.message ? e.message : e); break; }
-  }
-  return json({ error: "The answering endpoint reports: " + last }, 502);
+    }
+    if (!res) {
+      send({ t: "error", error: "The answering endpoint reports: " + last });
+      return;
+    }
+
+    send({ t: "modell", modell: used });
+    let text = "", truncated = false;
+    try {
+      ({ truncated } = await consume(res, {
+        deadline,
+        onText: t => { text += t; send({ t: "delta", text: t }); },
+      }));
+    } catch (e) {
+      send({ t: "error", error: message(e), teilweise: text });
+      return;
+    }
+    send({
+      t: "done", antwort: text.trim() || "(empty answer)",
+      modell: used, passagen: passagen.length, abgebrochen: truncated,
+    });
+  });
 };
 
-function json(o, status = 200) {
-  return new Response(JSON.stringify(o), {
-    status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
-  });
-}
+/* A friendly path, as for /api/explore. Naming the default path here instead
+   would leave the function unroutable — Netlify reserves the
+   /.netlify/functions/ prefix and reports the route as both defined and
+   uninvokable. */
+export const config = { path: "/api/dialogue" };
 
-export const config = { path: "/.netlify/functions/dialogue" };
