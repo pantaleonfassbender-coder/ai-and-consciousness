@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI and Consciousness · A Stepping Stone</title>
+<meta name="description" content="A reader's apparatus for Eric Schwitzgebel's Cambridge Element 'AI and Consciousness: A Skeptical Overview' — its argument in eleven sections, its vocabulary and its 216 references, a verified map into the Stanford Encyclopedia of Philosophy, and a live search of the literature that has appeared since.">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='11' fill='none' stroke='%23c9a227' stroke-width='2' stroke-dasharray='4 3'/><circle cx='16' cy='16' r='3' fill='%23c9a227'/></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="#/overview">
+    <span class="mark">◍</span>
+    <span class="brandtext">
+      <strong>AI and Consciousness</strong>
+      <em>A stepping stone from Schwitzgebel's skeptical overview</em>
+    </span>
+  </a>
+  <nav id="nav">
+    <a href="#/overview" data-v="overview">Overview</a>
+    <a href="#/sections" data-v="sections">The argument</a>
+    <a href="#/vocabulary" data-v="vocabulary">Vocabulary</a>
+    <a href="#/references" data-v="references">References</a>
+    <a href="#/onward" data-v="onward">Onward</a>
+    <a href="#/search" data-v="search">Live search</a>
+    <a href="#/concordance" data-v="concordance">Concordance</a>
+    <a href="#/dialogue" data-v="dialogue">Dialogue</a>
+  </nav>
+  <button id="unlockBtn" class="unlock" title="Open your own copy">
+    <span id="unlockDot" class="dot"></span><span id="unlockLabel">locked</span>
+  </button>
+</header>
+
+<main id="view"></main>
+
+<footer>
+  <p><a href="#/method">Method, sources and limits →</a> · <a href="#/privacy">Privacy</a> · <a href="#/imprint">Legal notice</a></p>
+  <p><strong>Rights.</strong> This site ships <em>no text</em> of the Element. It holds derived data — the
+  section structure, page anchors, counts, term distributions and the reference list — together with
+  editorial matter and a curated map of further reading written for this site. The concordance and the
+  evidence mode of the dialogue operate on a copy you open in your own browser, which is never uploaded.</p>
+  <p>Indexed: Eric Schwitzgebel, <em>AI and Consciousness: A Skeptical Overview</em>, Elements in Philosophy
+  and AI, ed. Herman Cappelen (Cambridge: Cambridge University Press, 2026),
+  <a href="https://doi.org/10.1017/9781009694285" target="_blank" rel="noopener">doi:10.1017/9781009694285</a>.
+  All rights rest with the author and Cambridge University Press. This site is unaffiliated with either.</p>
+</footer>
+
+<div id="unlockModal" class="modal" hidden>
+  <div class="modalbox">
+    <button class="closex" id="closeUnlock">×</button>
+    <h2>Open your own copy</h2>
+    <p>The concordance and the evidence mode of the dialogue run <strong>entirely in your browser</strong>.
+    Choose your PDF of the Element: this page reads its text layer, keeps it in your own device storage, and
+    uploads nothing. Only the passages you actively query in the dialogue ever leave your machine.</p>
+    <label class="drop" id="drop">
+      <input type="file" id="pdfInput" accept="application/pdf" hidden>
+      <span class="dropicon">⇪</span>
+      <span>Drop the PDF here, or click to choose</span>
+      <small>94 pages · a few seconds to read</small>
+    </label>
+    <div id="unlockProgress" hidden>
+      <div class="bar"><div id="barFill"></div></div>
+      <p id="progressText" class="mono"></p>
+    </div>
+    <div id="unlockState" class="statebox"></div>
+    <div class="modalfoot">
+      <button id="forgetBtn" class="ghost">Clear stored text</button>
+      <span class="fine">A Cambridge Core download carries a watermark with your IP address on every page.
+      It is stripped on reading and never leaves your device either way.</span>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
