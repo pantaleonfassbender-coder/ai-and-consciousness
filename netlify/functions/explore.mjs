@@ -2,10 +2,19 @@
    Uses Anthropic's server-side web search through Netlify's AI Gateway. The
    point of this site is that the Element is a stepping stone: this endpoint
    goes looking for what has been written since and around it.
+
+   The answer is streamed. Searching the open web takes far longer than the
+   thirty seconds of silence Netlify's edge tolerates, so the reply is opened
+   immediately and written as it is produced.
    Nothing is stored or logged. */
 
+import { json, ndjson, open, consume, gateway, message } from "./lib/stream.mjs";
+
 const MODEL = process.env.EXPLORE_MODEL || "claude-sonnet-4-6";
-const MAX_SEARCHES = Number(process.env.EXPLORE_SEARCHES || 6);
+/* Each search the model runs costs real seconds — it fetches and reads pages —
+   and the whole reply has to land inside the function's sixty-second life.
+   Three is what fits with an answer still written at the end of it. */
+const MAX_SEARCHES = Number(process.env.EXPLORE_SEARCHES || 3);
 
 const SYSTEM = `You help a reader move outward from one short book: Eric Schwitzgebel, "AI and Consciousness: A Skeptical Overview" (Cambridge Elements in Philosophy and AI, 2026). It is an introduction, and the reader wants to know what lies beyond it.
 
@@ -17,7 +26,7 @@ Method, and it is not optional:
 5. Represent disagreement as disagreement. Schwitzgebel argues for a considered agnosticism about AI consciousness; there are stronger and weaker positions on both sides, and the reader is entitled to the range rather than a consensus that does not exist.
 6. Distinguish clearly between what the Element itself says and what you found on the web. The reader has the Element; what they need from you is everything else.
 
-Form: three to six short paragraphs, or a short annotated list where a list genuinely helps. For each source: author, year, venue, the URL you retrieved, and one sentence on why it is worth the reader's time. No filler, no encouragement, and no summary of what the reader already has in front of them.
+Form: be compact, because there is a hard limit on how long you may take and an answer cut off mid-sentence is worth less to the reader than a short one that finishes. Three or four short paragraphs, or a short annotated list where a list genuinely helps. For each source: author, year, venue, the URL you retrieved, and one clause on why it is worth the reader's time. Six sources well chosen beat twelve listed. No filler, no encouragement, and no summary of what the reader already has in front of them.
 
 If asked something the searches cannot settle, say what would settle it and where you would look.`;
 
@@ -30,8 +39,7 @@ export default async (req) => {
   const kontext = String(body.kontext || "").slice(0, 1200).trim();
   if (frage.length < 4) return json({ error: "Send a formulated question." }, 400);
 
-  const key = process.env.ANTHROPIC_API_KEY;
-  const base = (process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com").replace(/\/$/, "");
+  const { key, base } = gateway();
   if (!key) {
     return json({
       error: "No access to the Anthropic endpoint is configured. In Netlify, enable AI Gateway under " +
@@ -41,7 +49,9 @@ export default async (req) => {
 
   const payload = {
     model: MODEL,
-    max_tokens: 2200,
+    /* Sized so the writing finishes inside the deadline rather than being cut
+       off by it: the searches themselves already take some twenty seconds. */
+    max_tokens: 1100,
     system: SYSTEM,
     tools: [{ type: "web_search_20250305", name: "web_search", max_uses: MAX_SEARCHES }],
     messages: [{
@@ -52,39 +62,38 @@ export default async (req) => {
     }],
   };
 
-  try {
-    const r = await fetch(`${base}/v1/messages`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify(payload),
-    });
-    if (!r.ok) {
-      return json({ error: `The endpoint reports: ${r.status} ${(await r.text()).slice(0, 400)}` }, 502);
-    }
-    const d = await r.json();
-    const text = (d.content || []).filter(c => c.type === "text").map(c => c.text).join("\n").trim();
+  return ndjson(async ({ send, signal, deadline }) => {
     /* The searches the model actually ran, so the reader can see what was asked. */
-    const suchen = (d.content || [])
-      .filter(c => c.type === "server_tool_use" && c.name === "web_search")
-      .map(c => (c.input && c.input.query) || "").filter(Boolean);
-    const quellen = [];
-    for (const c of d.content || []) {
-      if (c.type === "web_search_tool_result" && Array.isArray(c.content)) {
-        for (const it of c.content) {
-          if (it && it.url) quellen.push({ url: it.url, titel: it.title || it.url });
-        }
-      }
+    const suchen = [], quellen = [], seen = new Set();
+    let text = "";
+    let res;
+    try {
+      res = await open(base, key, payload, signal);
+    } catch (e) {
+      send({ t: "error", error: `The endpoint reports: ${message(e)}` });
+      return;
     }
-    return json({ antwort: text || "(empty answer)", suchen, quellen: quellen.slice(0, 40) });
-  } catch (e) {
-    return json({ error: "The endpoint is not reachable: " + (e && e.message ? e.message : e) }, 502);
-  }
-};
-
-function json(o, status = 200) {
-  return new Response(JSON.stringify(o), {
-    status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+    let truncated = false;
+    try {
+      ({ truncated } = await consume(res, {
+        deadline,
+        onText: t => { text += t; send({ t: "delta", text: t }); },
+        onSearch: q => { suchen.push(q); send({ t: "search", query: q }); },
+        onSource: s => {
+          if (seen.has(s.url) || quellen.length >= 40) return;
+          seen.add(s.url); quellen.push(s); send({ t: "source", ...s });
+        },
+      }));
+    } catch (e) {
+      /* Whatever arrived before the failure is still worth handing over. */
+      send({ t: "error", error: message(e), teilweise: text });
+      return;
+    }
+    send({
+      t: "done", antwort: text.trim() || "(empty answer)", suchen, quellen,
+      modell: MODEL, abgebrochen: truncated,
+    });
   });
-}
+};
 
 export const config = { path: "/api/explore" };

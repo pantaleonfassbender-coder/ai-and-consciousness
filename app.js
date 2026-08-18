@@ -11,6 +11,86 @@ export const nf = n => new Intl.NumberFormat("en-GB").format(n);
 const el = h => { const t = document.createElement("template"); t.innerHTML = h.trim(); return t.content.firstElementChild; };
 export const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
+/* ================================================== TALKING TO THE ENDPOINTS
+   The two answering endpoints stream newline-delimited JSON, because a search
+   of the open web takes longer than the thirty seconds of silence Netlify's
+   edge tolerates before it closes the connection and substitutes an HTML error
+   page. Anything that is not the stream we asked for is reported as what it
+   actually is: handing an HTML page to JSON.parse produced "Unexpected token
+   '<'", which told the reader nothing they could act on. */
+
+async function endpointError(r) {
+  const body = await r.text().catch(() => "");
+  try {
+    const j = JSON.parse(body);
+    if (j && j.error) return j.error;
+  } catch { /* not JSON — fall through and describe what came back instead */ }
+  if (r.status === 504 || r.status === 502 || /Timeout/i.test(body))
+    return "The answer took longer than the connection was allowed to stay open, so nothing came back. " +
+           "A narrower question is usually enough.";
+  return `The endpoint answered ${r.status}${r.statusText ? " " + r.statusText : ""} instead of an answer.`;
+}
+
+/** POSTs `body`, then consumes the NDJSON stream, calling `on[tag]` per event.
+    Resolves with the final `done` event or with `{ error }`; never throws. */
+export async function askStream(url, body, on = {}) {
+  let r;
+  try {
+    r = await fetch(url, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    });
+  } catch (e) {
+    return { error: "The endpoint could not be reached: " + (e && e.message ? e.message : e) };
+  }
+  if (!r.ok || !(r.headers.get("content-type") || "").includes("ndjson") || !r.body) {
+    return { error: await endpointError(r) };
+  }
+
+  const reader = r.body.getReader(), dec = new TextDecoder();
+  let buf = "", result = null;
+  const take = s => {
+    let ev;
+    try { ev = JSON.parse(s); } catch { return; }
+    if (ev.t === "done") result = ev;
+    else if (ev.t === "error") result = { error: ev.error, teilweise: ev.teilweise };
+    const fn = on[ev.t];
+    if (fn) fn(ev);
+  };
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() ?? "";
+      for (const l of lines) if (l.trim()) take(l);
+    }
+    if (buf.trim()) take(buf);
+  } catch (e) {
+    if (!result) return { error: "The connection broke while the answer was arriving: " +
+                                 (e && e.message ? e.message : e) };
+  }
+  return result || { error: "The endpoint closed the connection before the answer was finished." };
+}
+
+/** Paints streamed prose into `node` as paragraphs, once per frame rather than
+    once per token, so a long answer does not thrash the layout. */
+export function writer(node) {
+  let text = "", queued = false;
+  const draw = () => {
+    queued = false;
+    node.innerHTML = text.split(/\n{2,}/).map(p => `<p>${esc(p)}</p>`).join("");
+  };
+  const paint = chunk => {
+    text += chunk;
+    if (!queued) { queued = true; requestAnimationFrame(draw); }
+  };
+  paint.set = t => { text = t; draw(); };
+  paint.flush = draw;
+  paint.text = () => text;
+  return paint;
+}
+
 const HUE = ["#c9a227", "#9db8a4", "#c07a5a", "#a89bc4", "#7fa9c9", "#c9968f",
              "#8fb3a0", "#b9a06a", "#a0b6c9", "#c4a0b4", "#93a97f"];
 const secColor = i => HUE[i % HUE.length];
@@ -18,7 +98,22 @@ const secOf = nr => (D.sections || []).find(s => String(s.nr) === String(nr));
 
 async function boot() {
   const names = ["korpus", "sections", "terms", "keyness", "biblio", "sep", "anchors"];
-  const res = await Promise.all(names.map(n => fetch(`data/${n}.json`).then(r => r.json())));
+  let res;
+  try {
+    /* A missing or rewritten data file used to reach JSON.parse and stop the
+       whole site with a parser message. Say what failed instead. */
+    res = await Promise.all(names.map(async n => {
+      const r = await fetch(`data/${n}.json`);
+      if (!r.ok) throw new Error(`data/${n}.json answered ${r.status}`);
+      if (!(r.headers.get("content-type") || "").includes("json")) throw new Error(`data/${n}.json is not JSON`);
+      return r.json();
+    }));
+  } catch (e) {
+    view.innerHTML = `<div class="statebox warn"><strong>The site's data did not load.</strong>
+      <p style="margin:.3rem 0 0;font-size:.9rem">${esc(e && e.message ? e.message : e)}.
+      Reloading the page usually settles it.</p></div>`;
+    return;
+  }
   names.forEach((n, i) => D[n] = res[i]);
   try { await C.restore(D.sections, D.anchors); } catch (e) { console.warn("restore failed", e); }
   refreshBadge();
@@ -325,33 +420,57 @@ function viewSearch() {
   btn.onclick = async () => {
     const frage = q.value.trim();
     if (frage.length < 4) { state.textContent = "Please formulate a question."; return; }
-    btn.disabled = true; state.textContent = "Searching the web — this takes a moment …";
-    let data;
-    try {
-      const kontext = s
-        ? `Section ${s.nr} of the Element, "${s.titel}", pp. ${s.seite_von}–${s.seite_bis}. ` +
-          `Its distinctive vocabulary: ${(D.keyness[String(s.nr)] || []).slice(0, 10).map(x => x[0]).join(", ")}.`
-        : "";
-      const r = await fetch("/api/explore", {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ frage, kontext }),
-      });
-      data = await r.json();
-    } catch (e) { data = { error: String(e && e.message ? e.message : e) }; }
-    btn.disabled = false; state.textContent = "";
-    if (data.error) { out.prepend(el(`<div class="statebox warn">${esc(data.error)}</div>`)); return; }
-    out.prepend(el(`<div class="panel answer">
+    btn.disabled = true; state.textContent = "Searching the web — the answer appears as it is written …";
+
+    const kontext = s
+      ? `Section ${s.nr} of the Element, "${s.titel}", pp. ${s.seite_von}–${s.seite_bis}. ` +
+        `Its distinctive vocabulary: ${(D.keyness[String(s.nr)] || []).slice(0, 10).map(x => x[0]).join(", ")}.`
+      : "";
+
+    /* The panel goes up before the answer exists: the searches show as they are
+       run, the pages as they are retrieved, the prose as it is written. */
+    const panel = el(`<div class="panel answer">
       <h2>${esc(frage)}</h2>
-      <div class="readable">${data.antwort.split(/\n{2,}/).map(p => `<p>${esc(p)}</p>`).join("")}</div>
-      ${data.suchen && data.suchen.length ? `<details class="evidence">
-        <summary>${data.suchen.length} searches were run</summary>
-        <ul>${data.suchen.map(x => `<li class="mono">${esc(x)}</li>`).join("")}</ul></details>` : ""}
-      ${data.quellen && data.quellen.length ? `<details class="evidence">
-        <summary>${data.quellen.length} pages retrieved</summary>
-        <ul>${data.quellen.map(x =>
-          `<li><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.titel)}</a></li>`).join("")}</ul></details>` : ""}
+      <div class="readable" data-body></div>
+      <details class="evidence" data-searches hidden><summary></summary><ul></ul></details>
+      <details class="evidence" data-sources hidden><summary></summary><ul></ul></details>
       <p class="fine">Retrieved from the open web. Check each source before you cite it.</p>
-    </div>`));
+    </div>`);
+    out.prepend(panel);
+    const body = panel.querySelector("[data-body]");
+    const paint = writer(body);
+    const grow = (box, item, label) => {
+      box.hidden = false;
+      box.querySelector("ul").append(item);
+      box.querySelector("summary").textContent = `${box.querySelectorAll("li").length} ${label}`;
+    };
+    const searches = panel.querySelector("[data-searches]");
+    const sources = panel.querySelector("[data-sources]");
+
+    const data = await askStream("/api/explore", { frage, kontext }, {
+      search: ev => {
+        grow(searches, el(`<li class="mono">${esc(ev.query)}</li>`), "searches were run");
+        state.textContent = `Searching: ${ev.query}`;
+      },
+      source: ev => grow(sources,
+        el(`<li><a href="${esc(ev.url)}" target="_blank" rel="noopener">${esc(ev.titel)}</a></li>`),
+        "pages retrieved"),
+      delta: ev => { state.textContent = "Writing the answer …"; paint(ev.text); },
+    });
+
+    btn.disabled = false; state.textContent = "";
+    if (data.error) {
+      paint.flush();
+      const warn = el(`<div class="statebox warn">${esc(data.error)}</div>`);
+      /* Keep a half-written answer and say it is half-written; discard an empty shell. */
+      if (paint.text()) body.after(warn);
+      else { panel.remove(); out.prepend(warn); }
+      return;
+    }
+    paint.set(data.antwort);
+    if (data.abgebrochen) body.after(el(`<div class="statebox warn">This answer was cut short: the search
+      ran up against the time the endpoint is allowed to take. What is above stands, but it stops early —
+      a narrower question gets a complete one.</div>`));
     q.value = "";
   };
 }
