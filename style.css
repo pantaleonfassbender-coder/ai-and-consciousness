@@ -296,3 +296,6 @@ textarea:focus{outline:2px solid var(--acc)}
 .bib:first-child{border-top:0}
 .bib .ba{color:var(--fg)}
 .bib .bj{color:var(--acc);font-family:var(--mono);font-size:.85rem}
+
+/* welfare module */
+.wsub { font-size: 1.05rem; margin: 1.6rem 0 .4rem; color: var(--acc, #c9a227); }

@@ -1,6 +1,7 @@
 /* app.js — router, data and views. */
 import * as C from "./corpus.js";
 import { renderDialogue } from "./dialogue.js";
+import { viewWelfare, viewWelfareRefs } from "./welfare.js";
 
 export const D = {};
 const view = document.getElementById("view");
@@ -17,7 +18,8 @@ const secColor = i => HUE[i % HUE.length];
 const secOf = nr => (D.sections || []).find(s => String(s.nr) === String(nr));
 
 async function boot() {
-  const names = ["korpus", "sections", "terms", "keyness", "biblio", "sep", "anchors"];
+  const names = ["korpus", "sections", "terms", "keyness", "biblio", "sep", "anchors",
+                 "welfare_text", "welfare_sections", "welfare_biblio"];
   const res = await Promise.all(names.map(n => fetch(`data/${n}.json`).then(r => r.json())));
   names.forEach((n, i) => D[n] = res[i]);
   try { await C.restore(D.sections, D.anchors); } catch (e) { console.warn("restore failed", e); }
@@ -31,6 +33,7 @@ const ROUTES = {
   references: viewReferences, onward: viewOnward, search: viewSearch,
   concordance: viewConcordance, method: viewMethod, privacy: viewPrivacy, imprint: viewImprint,
   dialogue: a => renderDialogue(view, a),
+  welfare: viewWelfare, "welfare-refs": viewWelfareRefs,
 };
 function route() {
   const h = (location.hash || "#/overview").slice(2).split("/");
@@ -80,6 +83,17 @@ function viewOverview() {
       <div class="kpi"><b>${nf(k.references)}</b><span>works cited</span></div>
       <div class="kpi"><b>${sepCount}</b><span>encyclopedia entries mapped</span></div>
       <div class="kpi"><b>live</b><span>search of current work</span></div>
+    </div>
+
+    <div class="card" style="margin-bottom:1.6rem;border-left:3px solid #9db8a4">
+      <span class="tag">New — the second Element</span>
+      <h3>Emerging Questions in AI Welfare</h3>
+      <p style="font-size:.92rem;color:var(--fg2)">Keeling and Street take the step Schwitzgebel's
+      skepticism leaves open: if we cannot rule consciousness out, could AI systems be <em>welfare
+      subjects</em> — and what would a precautionary ethics owe them? Their Element is open access
+      (CC BY-NC 4.0), so this site carries it in full: seven sections, ${nf((D.welfare_sections || []).reduce((a, s) => a + s.tokens, 0))}
+      words, searchable and citable by printed page.</p>
+      <p><a class="btn" href="#/welfare">Read the second Element →</a></p>
     </div>
 
     <div class="grid g2" style="margin-bottom:2rem">
@@ -409,6 +423,21 @@ function viewMethod() {
       on every page giving the DOI, a timestamp and <strong>the IP address of whoever downloaded it</strong>.
       That is personal data. It is stripped when the text is read, it is not counted, and it never leaves the
       reader's device — but anyone passing such a file around should know it is in there.</p>
+    </div>
+
+    <div class="panel"><h2>The second Element: full text under CC BY-NC</h2>
+      <p class="readable">The rights position of the two Elements differs, and the site treats them
+      differently. Keeling and Street's <em>Emerging Questions in AI Welfare</em> is published, in its
+      online edition, under CC BY-NC 4.0 — non-commercial re-use with attribution and an indication of
+      changes. This site is non-commercial, so it carries the full text: seven sections, 154 paragraphs,
+      each anchored to its printed page, with the Element's 23 footnotes attached in place and its
+      bibliography parsed. The changes made are stated with the text: the page layout, running heads and
+      the per-download watermark were removed, end-of-line hyphenation was joined, and paragraph numbers
+      were added editorially; the figures and tables are not reproduced. Schwitzgebel's Element carries no
+      such licence, and for it the bring-your-own-book model stands unchanged.</p>
+      <p class="readable">The watermark point applies here too: the source PDF carried the downloader's IP
+      address on every page. It was removed before any file was committed, and no copy of it exists in the
+      repository or its history.</p>
     </div>
 
     <div class="panel"><h2>Structure and page anchors</h2>

@@ -1,17 +1,32 @@
 # AI and Consciousness — a stepping stone
 
-A reader's apparatus for Eric Schwitzgebel, *AI and Consciousness: A Skeptical
-Overview* (Cambridge Elements in Philosophy and AI, 2026,
-doi:10.1017/9781009694285).
+A reader's apparatus for two Cambridge Elements on machine minds (both:
+Elements in Philosophy and AI, ed. Herman Cappelen, 2026):
 
-The Element is seventy-one pages and deliberately introductory. This site is
-built on that premise: it maps the argument, and then it is weighted towards
-getting the reader **off** the Element and into the literature.
+- Eric Schwitzgebel, *AI and Consciousness: A Skeptical Overview*
+  (doi:10.1017/9781009694285) — **bring your own copy**;
+- Geoff Keeling and Winnie Street, *Emerging Questions in AI Welfare*
+  (doi:10.1017/9781009732000) — **carried in full**, because its online
+  edition is open access under CC BY-NC 4.0.
 
-**No text of the Element is in this repository.** It is in copyright. What ships
-under `data/` is derived — eleven sections with page ranges and counts, page
-anchors, term distributions, log-likelihood keyness per section, and the 216
-works in its reference list.
+Schwitzgebel's Element is seventy-one pages and deliberately introductory. This
+site is built on that premise: it maps the argument, and then it is weighted
+towards getting the reader **off** the Element and into the literature —
+including into the second Element, which takes the step the first leaves open:
+if consciousness cannot be ruled out, could AI systems be *welfare subjects*?
+
+**No text of Schwitzgebel's Element is in this repository.** It is in
+copyright. What ships under `data/` for it is derived — eleven sections with
+page ranges and counts, page anchors, term distributions, log-likelihood
+keyness per section, and the 216 works in its reference list.
+
+**The full text of Keeling & Street is in this repository**
+(`data/welfare_text.json`), under the terms of its CC BY-NC 4.0 online
+edition: non-commercial, attributed, changes indicated. The changes: reflowed
+from the PDF (layout, running heads and the per-download watermark removed,
+hyphenation joined), footnotes attached to their paragraphs, editorial
+paragraph numbers added, print-page anchors kept for citation; figures and
+tables not reproduced. The site itself is and stays non-commercial.
 
 ## What is weighted outward
 
