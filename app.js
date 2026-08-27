@@ -2,6 +2,7 @@
 import * as C from "./corpus.js";
 import { renderDialogue } from "./dialogue.js";
 import { viewWelfare, viewWelfareRefs } from "./welfare.js";
+import { viewAtlas } from "./atlas.js";
 
 export const D = {};
 const view = document.getElementById("view");
@@ -19,8 +20,9 @@ const secOf = nr => (D.sections || []).find(s => String(s.nr) === String(nr));
 
 async function boot() {
   const names = ["korpus", "sections", "terms", "keyness", "biblio", "sep", "anchors",
-                 "welfare_text", "welfare_sections", "welfare_biblio"];
-  const res = await Promise.all(names.map(n => fetch(`data/${n}.json`).then(r => r.json())));
+                 "welfare_text", "welfare_sections", "welfare_biblio", "atlas"];
+  const res = await Promise.all(names.map(n =>
+    fetch(`data/${n}.json`).then(r => r.json()).catch(() => null)));
   names.forEach((n, i) => D[n] = res[i]);
   try { await C.restore(D.sections, D.anchors); } catch (e) { console.warn("restore failed", e); }
   refreshBadge();
@@ -33,7 +35,7 @@ const ROUTES = {
   references: viewReferences, onward: viewOnward, search: viewSearch,
   concordance: viewConcordance, method: viewMethod, privacy: viewPrivacy, imprint: viewImprint,
   dialogue: a => renderDialogue(view, a),
-  welfare: viewWelfare, "welfare-refs": viewWelfareRefs,
+  welfare: viewWelfare, "welfare-refs": viewWelfareRefs, atlas: viewAtlas,
 };
 function route() {
   const h = (location.hash || "#/overview").slice(2).split("/");
@@ -438,6 +440,19 @@ function viewMethod() {
       <p class="readable">The watermark point applies here too: the source PDF carried the downloader's IP
       address on every page. It was removed before any file was committed, and no copy of it exists in the
       repository or its history.</p>
+    </div>
+
+    <div class="panel"><h2>The Atlas</h2>
+      <p class="readable">The Atlas is a co-occurrence network over the whole corpus: the leading content
+      terms of both Elements, linked when they appear in the same paragraph, weighted by pointwise mutual
+      information, laid out by a small force simulation in the browser. It ships derived data only — term
+      pairs, counts and anchors, the same category as the term and keyness tables — so the rights position
+      of neither Element is touched: for Keeling &amp; Street a node's citations link into the full text;
+      for Schwitzgebel they name section and printed page and hand the term to the concordance, which runs
+      on your own copy. The build (<span class="mono">tools/build-atlas.py</span>) is registry-driven:
+      when a further volume of the series is indexed, it is added as one source entry and the map is
+      rebuilt over the complete corpus — the view adapts to however many Elements the data names. A ring
+      marks terms both Elements carry; the network is a finding aid, not a semantic claim.</p>
     </div>
 
     <div class="panel"><h2>Structure and page anchors</h2>

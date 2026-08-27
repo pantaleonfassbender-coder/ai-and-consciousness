@@ -1,4 +1,2 @@
-.netlify/
-node_modules/
-.DS_Store
+schwitzgebel-paras.json
 *.pdf

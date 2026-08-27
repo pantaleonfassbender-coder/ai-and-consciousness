@@ -28,6 +28,18 @@ hyphenation joined), footnotes attached to their paragraphs, editorial
 paragraph numbers added, print-page anchors kept for citation; figures and
 tables not reproduced. The site itself is and stays non-commercial.
 
+## The Atlas
+
+`#/atlas` draws a co-occurrence network over the **whole corpus** — currently
+both Elements, automatically more when further volumes are indexed. It ships
+derived data only (`data/atlas.json`: term pairs, counts, anchors), so it works
+identically for the open-access text and the bring-your-own-book one: welfare
+nodes link into the full text, Schwitzgebel nodes name section and printed page
+and hand the term to the concordance. `tools/build-atlas.py` is registry-driven;
+sources whose text may not ship (Schwitzgebel, and any future in-copyright
+volume) are read from a local file next to the repository checkout
+(`schwitzgebel-paras.json`, gitignored) and skipped with a warning if absent.
+
 ## What is weighted outward
 
 - **Onward** — 27 entries in the Stanford Encyclopedia of Philosophy, mapped to
